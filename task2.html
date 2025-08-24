@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Team Task Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+  <div class="max-w-6xl mx-auto p-4">
+    <header class="flex items-center justify-between py-4">
+      <h1 class="text-2xl font-bold">Team Task Manager</h1>
+      <div id="userBox" class="text-sm"></div>
+    </header>
+
+    <!-- Auth -->
+    <section id="auth" class="grid md:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-2xl shadow">
+        <h2 class="font-semibold mb-4">Create account</h2>
+        <input id="r_name" class="input" placeholder="Name" />
+        <input id="r_email" class="input mt-2" placeholder="Email" />
+        <input id="r_password" type="password" class="input mt-2" placeholder="Password" />
+        <button id="btnRegister" class="btn mt-3">Sign up</button>
+      </div>
+      <div class="bg-white p-6 rounded-2xl shadow">
+        <h2 class="font-semibold mb-4">Login</h2>
+        <input id="l_email" class="input" placeholder="Email" />
+        <input id="l_password" type="password" class="input mt-2" placeholder="Password" />
+        <button id="btnLogin" class="btn mt-3">Login</button>
+      </div>
+    </section>
+
+    <!-- App -->
+    <section id="app" class="hidden space-y-6">
+      <!-- Teams -->
+      <div class="bg-white p-6 rounded-2xl shadow">
+        <h2 class="font-semibold mb-4">Teams</h2>
+        <div class="flex gap-2">
+          <input id="teamName" class="input flex-1" placeholder="New team name" />
+          <button id="btnCreateTeam" class="btn">Create Team</button>
+        </div>
+        <div id="teams" class="mt-4 flex gap-2 flex-wrap"></div>
+      </div>
+
+      <!-- Members -->
+      <div class="bg-white p-6 rounded-2xl shadow">
+        <div class="flex flex-wrap items-end gap-3">
+          <div>
+            <label class="text-sm">Active Team</label>
+            <select id="activeTeam" class="input"></select>
+          </div>
+          <div>
+            <label class="text-sm">Add member (email)</label>
+            <div class="flex gap-2">
+              <input id="memberEmail" class="input" placeholder="member@company.com" />
+              <button id="btnAddMember" class="btn">Add</button>
+            </div>
+          </div>
+        </div>
+        <div id="members" class="mt-3 text-sm text-gray-600"></div>
+      </div>
+
+      <!-- Create Task -->
+      <div class="bg-white p-6 rounded-2xl shadow">
+        <h2 class="font-semibold mb-2">Create Task</h2>
+        <div class="grid md:grid-cols-5 gap-2">
+          <input id="t_title" class="input" placeholder="Title" />
+          <input id="t_desc" class="input" placeholder="Description" />
+          <input id="t_due" type="datetime-local" class="input" />
+          <select id="t_assignee" class="input"></select>
+          <button id="btnCreateTask" class="btn">Add Task</button>
+        </div>
+      </div>
+
+      <!-- Task List -->
+      <div class="bg-white p-6 rounded-2xl shadow">
+        <div class="flex flex-wrap gap-2 items-end">
+          <div>
+            <label class="text-sm">Filter status</label>
+            <select id="f_status" class="input">
+              <option value="">All</option>
+              <option>pending</option>
+              <option>in_progress</option>
+              <option>completed</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-sm">Assignee</label>
+            <select id="f_assignee" class="input"></select>
+          </div>
+          <div class="flex-1">
+            <label class="text-sm">Search</label>
+            <input id="f_q" class="input w-full" placeholder="title/description" />
+          </div>
+          <button id="btnReload" class="btn">Reload</button>
+        </div>
+        <div id="tasks" class="mt-4 grid gap-2"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Tailwind Helpers -->
+  <style>
+    .input{ @apply border rounded-xl px-3 py-2 outline-none w-full; }
+    .btn{ @apply bg-black text-white rounded-xl px-4 py-2; }
+    .pill{ @apply text-xs px-2 py-1 rounded-full; }
+  </style>
+
+  <!-- App JS -->
+  <script>
+  const API = location.origin; // same origin as Express server
+  let token = null, user = null, teams = [], activeTeamId = null, members = [];
+
+  const $ = (id)=>document.getElementById(id);
+  const authHeader = ()=> token? { 'Authorization': 'Bearer ' + token } : {};
+  const fmtStatus = (s)=>({pending:'bg-yellow-100',in_progress:'bg-blue-100',completed:'bg-green-100'}[s]||'');
+
+  async function request(path, opts={}) {
+    const res = await fetch(API + path, {
+      ...opts,
+      headers: { 'Content-Type':'application/json', ...(opts.headers||{}), ...authHeader() }
+    });
+    if(!res.ok){ const data = await res.json().catch(()=>({})); throw new Error(data.error||res.statusText); }
+    return res.json();
+  }
+
+  // Auth
+  $('btnRegister').onclick = async ()=>{
+    try {
+      const data = await request('/auth/register',{method:'POST', body: JSON.stringify({ name:$('r_name').value, email:$('r_email').value, password:$('r_password').value })});
+      token=data.token; user=data.user; onLogin();
+    } catch(e){ alert(e.message); }
+  };
+  $('btnLogin').onclick = async ()=>{
+    try {
+      const data = await request('/auth/login',{method:'POST', body: JSON.stringify({ email:$('l_email').value, password:$('l_password').value })});
+      token=data.token; user=data.user; onLogin();
+    } catch(e){ alert(e.message); }
+  };
+
+  async function onLogin(){
+    $('auth').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    $('userBox').innerHTML = `<span>Logged in as <b>${user.name}</b> (${user.email})</span>`;
+    await loadTeams();
+    notifySetup();
+  }
+
+  // Teams
+  $('btnCreateTeam').onclick = async ()=>{
+    try{ await request('/teams',{method:'POST', body: JSON.stringify({ name:$('teamName').value })}); $('teamName').value=''; await loadTeams(); }
+    catch(e){ alert(e.message); }
+  };
+
+  async function loadTeams(){
+    teams = await request('/teams');
+    const sel = $('activeTeam'); sel.innerHTML = '';
+    teams.forEach(t=>{ const opt=document.createElement('option'); opt.value=t.id; opt.textContent=t.name; sel.appendChild(opt); });
+    if(teams.length){ activeTeamId = activeTeamId || teams[0].id; sel.value = activeTeamId; await loadMembers(); await reloadTasks(); }
+    $('teams').innerHTML = teams.map(t=>`<span class="pill bg-gray-200">${t.name}</span>`).join('');
+    sel.onchange = async ()=>{ activeTeamId = Number(sel.value); await loadMembers(); await reloadTasks(); };
+  }
+
+  $('btnAddMember').onclick = async ()=>{
+    try{ await request(`/teams/${activeTeamId}/members`, { method:'POST', body: JSON.stringify({ email: $('memberEmail').value }) }); $('memberEmail').value=''; await loadMembers(); }
+    catch(e){ alert(e.message); }
+  };
+
+  async function loadMembers(){
+    if(!activeTeamId) return;
+    members = await request(`/teams/${activeTeamId}/members`);
+    $('members').textContent = members.map(m=>`${m.name} <${m.email}>${m.role==='owner'?' (owner)':''}`).join(', ');
+    const aSel = $('t_assignee'); aSel.innerHTML = '<option value="">Unassigned</option>';
+    const fSel = $('f_assignee'); fSel.innerHTML = '<option value="">All</option>';
+    members.forEach(m=>{ const o1=document.createElement('option'); o1.value=m.id; o1.textContent=m.name; aSel.appendChild(o1); const o2=o1.cloneNode(true); fSel.appendChild(o2); });
+  }
+
+  // Tasks
+  $('btnCreateTask').onclick = async ()=>{
+    const dueEl = $('t_due'); const due = dueEl.value ? new Date(dueEl.value).toISOString() : null;
+    try{
+      await request('/tasks',{method:'POST', body: JSON.stringify({ title:$('t_title').value, description:$('t_desc').value, due_date: due, team_id: activeTeamId, assignee_id: $('t_assignee').value || null })});
+      $('t_title').value=''; $('t_desc').value=''; $('t_due').value=''; $('t_assignee').value='';
+      await reloadTasks();
+    }catch(e){ alert(e.message); }
+  };
+
+  $('btnReload').onclick = reloadTasks;
+  async function reloadTasks(){
+    const params = new URLSearchParams({ teamId: activeTeamId });
+    if($('f_status').value) params.append('status',$('f_status').value);
+    if($('f_assignee').value) params.append('assigneeId',$('f_assignee').value);
+    if($('f_q').value) params.append('q',$('f_q').value);
+    const rows = await request('/tasks?'+params.toString());
+    $('tasks').innerHTML = rows.map(r=>renderTask(r)).join('');
+  }
+
+  function renderTask(t){
+    const due = t.due_date? new Date(t.due_date): null;
+    const overdue = due && due < new Date() && t.status!=='completed';
+    return `<div class="p-4 border rounded-xl flex items-center justify-between">
+      <div>
+        <div class="font-medium">${t.title}</div>
+        <div class="text-sm text-gray-600">${t.description||''}</div>
+        <div class="flex gap-2 mt-1 items-center">
+          <span class="pill ${fmtStatus(t.status)}">${t.status}</span>
+          ${due?`<span class="pill ${overdue?'bg-red-100':'bg-gray-100'}">Due: ${due.toLocaleString()}</span>`:''}
+          ${t.assignee_id?`<span class="pill bg-purple-100">Assignee: ${nameById(t.assignee_id)}</span>`:''}
+        </div>
+      </div>
+      <div class="flex gap-2">
+        ${['pending','in_progress','completed'].map(s=>`<button class="btn" onclick="updateStatus(${t.id}, '${s}')">${s.replace('_',' ')}</button>`).join('')}
+        <button class="btn" onclick="delTask(${t.id})">Delete</button>
+      </div>
+    </div>`;
+  }
+
+  function nameById(id){ const m = members.find(m=>m.id===id); return m? m.name : '#'+id; }
+  async function updateStatus(id, status){ try{ await request(`/tasks/${id}/status`, { method:'PATCH', body: JSON.stringify({ status })}); await reloadTasks(); } catch(e){ alert(e.message); } }
+  async function delTask(id){ if(!confirm('Delete task?')) return; try{ await request(`/tasks/${id}`, { method:'DELETE' }); await reloadTasks(); } catch(e){ alert(e.message); } }
+
+  // Notifications
+  async function notifySetup(){
+    if(!('Notification' in window)) return;
+    if(Notification.permission !== 'granted'){ try{ await Notification.requestPermission(); }catch{} }
+    setInterval(async ()=>{
+      if(!activeTeamId) return;
+      const rows = await request('/tasks?'+new URLSearchParams({ teamId: activeTeamId }));
+      const now = Date.now();
+      rows.forEach(t=>{
+        if(!t.due_date || t.status==='completed') return;
+        const due = new Date(t.due_date).getTime();
+        if(due - now < 30*60*1000 && due - now > 0){
+          new Notification('⏰ Task due soon', { body: `${t.title} at ${new Date(due).toLocaleTimeString()}` });
+        }
+        if(due < now && now - due < 60*1000){
+          new Notification('⚠️ Task overdue', { body: `${t.title} was due at ${new Date(due).toLocaleTimeString()}` });
+        }
+      });
+    }, 60*1000);
+  }
+  </script>
+</body>
+</html>
